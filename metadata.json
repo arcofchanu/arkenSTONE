@@ -1,0 +1,6 @@
+{
+  "name": "arkenSTONE",
+  "description": "Red Team Vault & Bug Tracking Dashboard",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

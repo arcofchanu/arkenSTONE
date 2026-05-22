@@ -1,0 +1,77 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Questrial&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Questrial", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --color-bg-base: #0B0914;
+  --color-bg-surface: #100C1A;
+  --color-bg-elevated: #191428;
+  --color-bg-input: #08060D;
+  
+  --color-border-default: #27213C;
+  --color-border-active: #664CC3;
+  
+  --color-accent: #A58CF2;
+  --color-accent-dim: #7C5FDE;
+  --color-accent-muted: #382470;
+  
+  --color-text-primary: #EDE9F8;
+  --color-text-secondary: #998FB4;
+  --color-text-dim: #5E5676;
+  
+  --color-status-confirmed: #10B981;
+  --color-status-partial: #F59E0B;
+  --color-status-patched: #EF4444;
+  --color-status-untested: #5E5676;
+
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+}
+
+body.theme-light {
+  --color-bg-base: #FCFBF9;
+  --color-bg-surface: #F5F3EF;
+  --color-bg-elevated: #EBE7E0;
+  --color-bg-input: #FFFFFF;
+  
+  --color-border-default: #DEDCD6;
+  --color-border-active: #664CC3;
+  
+  --color-accent: #664CC3;
+  --color-accent-dim: #503CA3;
+  --color-accent-muted: #E6E1F4;
+  
+  --color-text-primary: #1C1B1A;
+  --color-text-secondary: #5C5A58;
+  --color-text-dim: #A19E9A;
+  
+  --color-status-untested: #A19E9A;
+}
+
+@layer base {
+  body {
+    @apply bg-bg-base text-text-primary font-sans antialiased;
+    color-scheme: dark;
+  }
+  body.theme-light {
+    color-scheme: light;
+  }
+}
+
+/* Custom Scrollbar for a hacker vibe */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-bg-elevated rounded-full border border-border-default;
+}
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-border-active;
+}
