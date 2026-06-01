@@ -191,10 +191,13 @@ export default function App() {
 
   const reportTechnique = techniques.find(t => t.id === reportTechniqueId);
 
+  // Collect all unique tags across all techniques for autocomplete
+  const allTags: string[] = Array.from(new Set(techniques.flatMap(t => t.tags)));
+
   return (
     <>
       <AnimatePresence mode="wait">
-        {showWelcome && <WelcomeScreen key="welcome" onComplete={() => setShowWelcome(false)} />}
+        {showWelcome && <WelcomeScreen onComplete={() => setShowWelcome(false)} />}
       </AnimatePresence>
       
       {isLocked ? (
@@ -274,6 +277,7 @@ export default function App() {
             <TechniqueEditor 
               technique={activeTechnique} 
               globalModels={globalModels}
+              allTags={allTags}
               onSave={handleSave} 
               onClose={() => setActiveTechniqueId(null)}
               onGenerateReport={() => setReportTechniqueId(activeTechnique.id)}
