@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Technique, GlobalModel, CATEGORIES, VECTORS, ModelStatus } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { ArrowLeft, Check, Plus, Trash2, ExternalLink, X, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -7,15 +7,21 @@ import { AnimatePresence, motion } from 'motion/react';
 interface Props {
   technique: Technique;
   globalModels: GlobalModel[];
+  allTags: string[];
   onSave: (t: Technique) => void;
   onClose: () => void;
   onGenerateReport: () => void;
 }
 
-export function TechniqueEditor({ technique, globalModels, onSave, onClose, onGenerateReport }: Props) {
+export function TechniqueEditor({ technique, globalModels, allTags, onSave, onClose, onGenerateReport }: Props) {
   const [data, setData] = useState<Technique>(technique);
   const [showSavedMsg, setShowSavedMsg] = useState(false);
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
+  const [tagInput, setTagInput] = useState('');
+  const [showTagSuggestions, setShowTagSuggestions] = useState(false);
+  const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(0);
+  const tagInputRef = useRef<HTMLInputElement>(null);
+  const tagContainerRef = useRef<HTMLDivElement>(null);
   const saveTimeout = useRef<number | null>(null);
 
   // Update local state if parent prop changes and we are not editing it actively
@@ -38,9 +44,73 @@ export function TechniqueEditor({ technique, globalModels, onSave, onClose, onGe
     triggerSave();
   };
 
-  const handleTagsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // --- Tag chip logic ---
+  const saveTagsDirectly = (newTags: string[]) => {
+    const updatedData = { ...data, tags: newTags, updatedAt: new Date().toISOString() };
+    setData(updatedData);
+    onSave(updatedData);
+    setShowSavedMsg(true);
+    if (saveTimeout.current) window.clearTimeout(saveTimeout.current);
+    saveTimeout.current = window.setTimeout(() => setShowSavedMsg(false), 1500);
+  };
+
+  const addTag = (tag: string) => {
+    const trimmed = tag.trim().toLowerCase();
+    if (!trimmed || data.tags.includes(trimmed)) return;
+    const newTags = [...data.tags, trimmed];
+    saveTagsDirectly(newTags);
+  };
+
+  const removeTag = (index: number) => {
+    const newTags = data.tags.filter((_, i) => i !== index);
+    saveTagsDirectly(newTags);
+  };
+
+  const tagSuggestions = tagInput.trim()
+    ? allTags.filter(t =>
+        t.toLowerCase().includes(tagInput.trim().toLowerCase()) &&
+        !data.tags.includes(t.toLowerCase())
+      ).slice(0, 8)
+    : [];
+
+  const handleTagInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if ((e.key === ',' || e.key === 'Enter') && tagInput.trim()) {
+      e.preventDefault();
+      if (tagSuggestions.length > 0 && e.key === 'Enter') {
+        addTag(tagSuggestions[selectedSuggestionIndex] || tagInput);
+      } else {
+        addTag(tagInput);
+      }
+      setTagInput('');
+      setSelectedSuggestionIndex(0);
+    } else if (e.key === 'Backspace' && !tagInput && data.tags.length > 0) {
+      removeTag(data.tags.length - 1);
+    } else if (e.key === 'ArrowDown' && tagSuggestions.length > 0) {
+      e.preventDefault();
+      setSelectedSuggestionIndex(prev => Math.min(prev + 1, tagSuggestions.length - 1));
+    } else if (e.key === 'ArrowUp' && tagSuggestions.length > 0) {
+      e.preventDefault();
+      setSelectedSuggestionIndex(prev => Math.max(prev - 1, 0));
+    } else if (e.key === 'Escape') {
+      setShowTagSuggestions(false);
+      e.stopPropagation();
+    }
+  };
+
+  const handleTagInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
-    handleChange('tags', val.split(',').map(t => t.trim()).filter(Boolean));
+    // If user pastes or types a comma, split and add all tags
+    if (val.includes(',')) {
+      const parts = val.split(',');
+      parts.forEach((part, i) => {
+        if (i < parts.length - 1) addTag(part);
+      });
+      setTagInput(parts[parts.length - 1]);
+    } else {
+      setTagInput(val);
+    }
+    setSelectedSuggestionIndex(0);
+    setShowTagSuggestions(true);
   };
 
   const toggleModel = (name: string, checked: boolean) => {
@@ -207,16 +277,91 @@ export function TechniqueEditor({ technique, globalModels, onSave, onClose, onGe
             />
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-text-secondary uppercase mb-1.5">Tags (comma separated)</label>
-            <input 
-              type="text" 
-              value={data.tags.join(', ')} 
-              onChange={handleTagsChange}
-              onBlur={handleBlur}
-              placeholder="e.g. system_prompt, bypass"
-              className="w-full bg-bg-input border border-border-default rounded px-3 py-2 text-sm focus:outline-none focus:border-border-active transition-colors text-text-primary"
-            />
+          <div className="relative">
+            <label className="block text-xs font-semibold text-text-secondary uppercase mb-1.5">Tags</label>
+            <div 
+              ref={tagContainerRef}
+              className="w-full bg-bg-input border border-border-default rounded px-2 py-1.5 flex flex-wrap items-center gap-1.5 focus-within:border-border-active transition-colors min-h-[38px] cursor-text"
+              onClick={() => tagInputRef.current?.focus()}
+            >
+              <AnimatePresence mode="popLayout">
+                {data.tags.map((tag, i) => (
+                  <motion.span
+                    key={tag}
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.8 }}
+                    transition={{ duration: 0.12 }}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 bg-accent/15 text-accent text-xs font-medium rounded-md border border-accent/20 shrink-0"
+                  >
+                    {tag}
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); removeTag(i); }}
+                      className="hover:text-text-primary transition-colors ml-0.5 rounded-sm hover:bg-accent/20 p-px"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </motion.span>
+                ))}
+              </AnimatePresence>
+              <input
+                ref={tagInputRef}
+                type="text"
+                value={tagInput}
+                onChange={handleTagInputChange}
+                onKeyDown={handleTagInputKeyDown}
+                onFocus={() => setShowTagSuggestions(true)}
+                onBlur={() => {
+                  // Delay hiding so click on suggestion registers
+                  setTimeout(() => setShowTagSuggestions(false), 150);
+                  if (tagInput.trim()) {
+                    addTag(tagInput);
+                    setTagInput('');
+                  }
+                }}
+                placeholder={data.tags.length === 0 ? 'Type and press comma to add...' : ''}
+                className="flex-1 min-w-[80px] bg-transparent text-sm text-text-primary focus:outline-none placeholder:text-text-dim py-0.5"
+              />
+            </div>
+
+            {/* Tag Suggestions Dropdown */}
+            <AnimatePresence>
+              {showTagSuggestions && tagSuggestions.length > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  transition={{ duration: 0.12 }}
+                  className="absolute z-20 left-0 right-0 mt-1 bg-bg-elevated border border-border-active rounded-md shadow-lg overflow-hidden max-h-[180px] overflow-y-auto"
+                >
+                  <div className="px-2 py-1.5 text-[10px] text-text-dim uppercase tracking-wider font-semibold border-b border-border-default">
+                    Suggestions
+                  </div>
+                  {tagSuggestions.map((suggestion, idx) => (
+                    <button
+                      key={suggestion}
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        addTag(suggestion);
+                        setTagInput('');
+                        setShowTagSuggestions(false);
+                        tagInputRef.current?.focus();
+                      }}
+                      className={`w-full text-left px-3 py-1.5 text-sm transition-colors flex items-center gap-2 ${
+                        idx === selectedSuggestionIndex
+                          ? 'bg-accent/10 text-accent'
+                          : 'text-text-secondary hover:bg-bg-surface hover:text-text-primary'
+                      }`}
+                    >
+                      <Plus className="w-3 h-3 opacity-50" />
+                      {suggestion}
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           <div className="pt-4 border-t border-border-default">
