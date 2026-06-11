@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { Technique } from '../types';
-import { Shield, ShieldAlert, ShieldCheck, ShieldEllipsis, Trash2, DollarSign } from 'lucide-react';
+import { Shield, ShieldAlert, ShieldCheck, ShieldEllipsis, Trash2, DollarSign, FileDown } from 'lucide-react';
+import { exportPDFWithImages } from '../utils/export';
 
 interface Props {
   technique: Technique;
@@ -10,6 +11,7 @@ interface Props {
 
 export function TechniqueCard({ technique, onClick, onDelete }: Props) {
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
   const getWorstStatus = () => {
     if (technique.models.length === 0) return 'Untested';
@@ -47,25 +49,25 @@ export function TechniqueCard({ technique, onClick, onDelete }: Props) {
       {isConfirmingDelete ? (
         <div 
           className="absolute top-3 right-3 flex items-center gap-1 bg-bg-elevated border border-border-active rounded p-1 shadow-lg z-10" 
-          onClick={e => e.stopPropagation()}
+          onClick={(e: React.MouseEvent) => e.stopPropagation()}
         >
           <span className="text-xs text-text-primary px-1 font-semibold">Delete?</span>
           <button 
             className="text-xs text-bg-base bg-status-patched hover:bg-red-500 font-semibold px-2 py-0.5 rounded transition-colors" 
-            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            onClick={(e: React.MouseEvent) => { e.stopPropagation(); onDelete(); }}
           >
             Yes
           </button>
           <button 
             className="text-xs text-text-secondary hover:text-text-primary hover:bg-bg-surface px-2 py-0.5 rounded transition-colors" 
-            onClick={(e) => { e.stopPropagation(); setIsConfirmingDelete(false); }}
+            onClick={(e: React.MouseEvent) => { e.stopPropagation(); setIsConfirmingDelete(false); }}
           >
             No
           </button>
         </div>
       ) : (
         <button 
-          onClick={(e) => { e.stopPropagation(); setIsConfirmingDelete(true); }}
+          onClick={(e: React.MouseEvent) => { e.stopPropagation(); setIsConfirmingDelete(true); }}
           className="absolute top-3 right-3 text-text-dim hover:text-status-patched opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded hover:bg-bg-elevated z-10"
         >
           <Trash2 className="w-4 h-4" />
@@ -113,8 +115,21 @@ export function TechniqueCard({ technique, onClick, onDelete }: Props) {
               {technique.models.length} {technique.models.length === 1 ? 'm' : 'm'}
             </span>
           )}
+          <button
+            onClick={(e: React.MouseEvent) => {
+              e.stopPropagation();
+              setIsExporting(true);
+              exportPDFWithImages(technique).finally(() => setIsExporting(false));
+            }}
+            disabled={isExporting}
+            className="text-text-dim hover:text-status-confirmed opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-bg-elevated disabled:opacity-50"
+            title="Export as PDF"
+          >
+            <FileDown className="w-4 h-4" />
+          </button>
         </div>
       </div>
     </div>
+
   );
 }
