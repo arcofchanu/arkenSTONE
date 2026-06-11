@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, FormEvent } from 'react';
 import { GlobalModel } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { Trash2, Plus, Cpu, Edit2, Check, X } from 'lucide-react';
@@ -14,7 +14,7 @@ export function ModelsView({ models, onModelsChange }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
 
-  const handleAdd = (e?: React.FormEvent) => {
+  const handleAdd = (e?: FormEvent) => {
     e?.preventDefault();
     if (!newName.trim()) return;
     const newModel = { id: uuidv4(), name: newName.trim() };

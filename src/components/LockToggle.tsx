@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, FormEvent } from 'react';
 import { Lock, Unlock, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -31,7 +31,7 @@ export function LockToggle({ config, onSaveConfig, onLockNow }: LockToggleProps)
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen]);
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = (e: FormEvent) => {
     e.preventDefault();
     if (id && pin) {
       onSaveConfig({ id, pin });

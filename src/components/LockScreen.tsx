@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, FormEvent } from 'react';
 import { motion } from 'motion/react';
 import { Shield } from 'lucide-react';
 import { CUSTOM_LOGO_BASE64 } from './WelcomeScreen';
@@ -12,7 +12,7 @@ export function LockScreen({ onUnlock }: LockScreenProps) {
   const [pin, setPin] = useState('');
   const [error, setError] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (onUnlock(id, pin)) {
       setError(false);

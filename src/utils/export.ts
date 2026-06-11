@@ -268,7 +268,7 @@ export const exportDocx = async (tech: Technique) => {
   const modelRows = tech.models.length > 0 ? [
     new TableRow({
       children: [
-        new TableCell({ children: [new Paragraph({ text: "Model", border: { bottom: { color: "00", space: 1, value: "single", size: 6 } } })], borders: createBorders() }),
+        new TableCell({ children: [new Paragraph({ text: "Model", border: { bottom: { color: "00", space: 1, size: 6, style: BorderStyle.SINGLE } } })], borders: createBorders() }),
         new TableCell({ children: [new Paragraph({ text: "Status" })], borders: createBorders() }),
         new TableCell({ children: [new Paragraph({ text: "Notes" })], borders: createBorders() }),
       ],
@@ -342,3 +342,215 @@ export const exportDocx = async (tech: Technique) => {
 };
 
 export const getReportString = generateReportContent;
+
+// ─── YAML export / import (zero external dependencies) ───────────────────────
+
+const yamlEscape = (s: string): string => {
+  if (s.includes('\n')) return ''; // handled via block-literal; caller must branch
+  if (/[:#\[\]{},|>&!%@`'"]/.test(s) || s.trim() !== s || s === '' || /^(true|false|null|~|\d)/.test(s)) {
+    return `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+  }
+  return s;
+};
+
+const yamlStr = (key: string, value: string, indent: string): string => {
+  if (value.includes('\n')) {
+    const lines = value.split('\n');
+    return `${indent}${key}: |\n${lines.map(l => `${indent}  ${l}`).join('\n')}\n`;
+  }
+  return `${indent}${key}: ${yamlEscape(value)}\n`;
+};
+
+const techniqueToYaml = (t: Technique, index: number): string => {
+  let out = index === 0 ? '' : '\n';
+  out += `- id: ${t.id}\n`;
+  out += yamlStr('name', t.name, '  ');
+  out += `  category: ${yamlEscape(t.category)}\n`;
+  out += `  vector: ${yamlEscape(t.vector)}\n`;
+  out += `  severity: ${t.severity}\n`;
+  out += yamlStr('description', t.description, '  ');
+  out += yamlStr('technique', t.technique, '  ');
+  out += yamlStr('notes', t.notes, '  ');
+  out += `  tags:\n`;
+  if (t.tags.length === 0) { out += `    []\n`; }
+  else { t.tags.forEach(tag => { out += `    - ${yamlEscape(tag)}\n`; }); }
+  out += `  createdAt: ${t.createdAt}\n`;
+  out += `  updatedAt: ${t.updatedAt}\n`;
+  out += `  models:\n`;
+  if (t.models.length === 0) { out += `    []\n`; }
+  else {
+    t.models.forEach(m => {
+      out += `    - id: ${m.id}\n`;
+      out += `      name: ${yamlEscape(m.name)}\n`;
+      out += `      status: ${yamlEscape(m.status)}\n`;
+      if (m.note) out += yamlStr('note', m.note, '      ');
+    });
+  }
+  if (t.bounty) {
+    out += `  bounty:\n`;
+    out += `    status: ${yamlEscape(t.bounty.status)}\n`;
+    out += `    amount: ${t.bounty.amount}\n`;
+    out += `    program: ${yamlEscape(t.bounty.program)}\n`;
+  }
+  // Photos are intentionally excluded from YAML export (base64 data URLs are too large)
+  return out;
+};
+
+export const exportCardsYaml = (techniques: Technique[]): void => {
+  const header =
+    `# arkenSTONE Card Export\n` +
+    `# Generated: ${new Date().toISOString()}\n` +
+    `# Total: ${techniques.length} card(s)\n\n`;
+  const body = techniques.map((t, i) => techniqueToYaml(t, i)).join('');
+  const blob = new Blob([header + body], { type: 'text/yaml' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `arkenstone-backup-${new Date().toISOString().split('T')[0]}.yaml`;
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+export const parseCardsYaml = (yaml: string): { cards: Technique[]; errors: string[] } => {
+  const errors: string[] = [];
+  const cards: Technique[] = [];
+  const lines = yaml.split('\n').filter(l => !l.trimStart().startsWith('#'));
+  let i = 0;
+
+  const unquote = (s: string): string => {
+    s = s.trim();
+    if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'")))
+      return s.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+    return s;
+  };
+
+  const blockLiteral = (baseIndent: number): string => {
+    const acc: string[] = [];
+    while (i < lines.length) {
+      const l = lines[i];
+      if (l.trim() === '') { acc.push(''); i++; continue; }
+      if (l.search(/\S/) <= baseIndent) break;
+      acc.push(l.slice(baseIndent + 2));
+      i++;
+    }
+    while (acc.length && acc[acc.length - 1] === '') acc.pop();
+    return acc.join('\n');
+  };
+
+  const strVal = (raw: string, cardIndent: number): string => {
+    if (raw.trim() === '|') return blockLiteral(cardIndent + 2);
+    return unquote(raw.trim());
+  };
+
+  while (i < lines.length) {
+    const line = lines[i];
+    if (line.trim() === '') { i++; continue; }
+    if (!/^- /.test(line)) { i++; continue; }
+
+    const card: Partial<Technique> & { models: ModelEntry[]; tags: string[]; photos: string[] } =
+      { models: [], tags: [], photos: [] };
+
+    const idM = line.match(/^- id:\s*(.+)/);
+    if (idM) card.id = idM[1].trim();
+    i++;
+
+    while (i < lines.length) {
+      const fl = lines[i];
+      if (fl.trim() === '') { i++; continue; }
+      if (fl.search(/\S/) === 0) break; // back to top level
+      const fm = fl.match(/^  ([a-zA-Z]+):\s*(.*)/);
+      if (!fm) { i++; continue; }
+      const [, key, raw] = fm;
+      i++;
+
+      switch (key) {
+        case 'name':        card.name = strVal(raw, 2); break;
+        case 'category':    card.category = unquote(raw) as Technique['category']; break;
+        case 'vector':      card.vector = unquote(raw) as Technique['vector']; break;
+        case 'severity':    card.severity = raw.trim() as Technique['severity']; break;
+        case 'description': card.description = strVal(raw, 2); break;
+        case 'technique':   card.technique = strVal(raw, 2); break;
+        case 'notes':       card.notes = strVal(raw, 2); break;
+        case 'createdAt':   card.createdAt = raw.trim(); break;
+        case 'updatedAt':   card.updatedAt = raw.trim(); break;
+        case 'tags': {
+          if (raw.trim() === '[]') break;
+          while (i < lines.length && /^    - /.test(lines[i])) {
+            card.tags.push(unquote(lines[i].replace(/^    - /, '').trim())); i++;
+          }
+          break;
+        }
+        case 'models': {
+          if (raw.trim() === '[]') break;
+          while (i < lines.length && /^    - /.test(lines[i])) {
+            const m: Partial<ModelEntry> = {};
+            const mId = lines[i].match(/^    - id:\s*(.+)/);
+            if (mId) m.id = mId[1].trim();
+            i++;
+            while (i < lines.length && /^      [a-zA-Z]/.test(lines[i])) {
+              const mf = lines[i].match(/^      ([a-zA-Z]+):\s*(.*)/);
+              if (mf) {
+                const [, mk, mv] = mf;
+                if (mk === 'name') m.name = unquote(mv);
+                else if (mk === 'status') m.status = unquote(mv) as ModelEntry['status'];
+                else if (mk === 'note') {
+                  if (mv.trim() === '|') { i++; m.note = blockLiteral(6); continue; }
+                  m.note = unquote(mv);
+                }
+              }
+              i++;
+            }
+            if (m.id && m.name && m.status) card.models.push(m as ModelEntry);
+          }
+          break;
+        }
+        case 'bounty': {
+          const b: { status?: string; amount?: number; program?: string } = {};
+          while (i < lines.length && /^    [a-zA-Z]/.test(lines[i])) {
+            const bf = lines[i].match(/^    ([a-zA-Z]+):\s*(.*)/);
+            if (bf) {
+              if (bf[1] === 'status') b.status = unquote(bf[2]);
+              else if (bf[1] === 'amount') b.amount = parseFloat(bf[2]) || 0;
+              else if (bf[1] === 'program') b.program = unquote(bf[2]);
+            }
+            i++;
+          }
+          card.bounty = {
+            status: (b.status || 'Not Submitted') as Technique['bounty']['status'],
+            amount: b.amount || 0,
+            program: b.program || ''
+          };
+          break;
+        }
+        case 'photos': {
+          while (i < lines.length && /^    - \|/.test(lines[i])) {
+            i++;
+            const chunks: string[] = [];
+            while (i < lines.length && /^      /.test(lines[i])) { chunks.push(lines[i].slice(6)); i++; }
+            card.photos.push(chunks.join(''));
+          }
+          break;
+        }
+      }
+    }
+
+    if (!card.id) { errors.push(`Skipped a card: missing 'id'`); continue; }
+    cards.push({
+      id: card.id,
+      name: card.name || 'Untitled',
+      category: card.category || 'Other',
+      vector: card.vector || 'Custom',
+      severity: card.severity || 'Medium',
+      description: card.description || '',
+      technique: card.technique || '',
+      notes: card.notes || '',
+      tags: card.tags,
+      models: card.models,
+      photos: card.photos.length > 0 ? card.photos : undefined,
+      bounty: card.bounty,
+      createdAt: card.createdAt || new Date().toISOString(),
+      updatedAt: card.updatedAt || new Date().toISOString(),
+    });
+  }
+  return { cards, errors };
+};

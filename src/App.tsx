@@ -1,13 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, ChangeEvent } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { Technique, GlobalModel, CATEGORIES, VECTORS } from './types';
 import { getTechniques, saveTechniques, getGlobalModels, saveGlobalModels } from './utils/storage';
+import { exportCardsYaml, parseCardsYaml } from './utils/export';
 import { Sidebar } from './components/Sidebar';
 import { TechniqueCard } from './components/TechniqueCard';
 import { TechniqueEditor } from './components/TechniqueEditor';
 import { ReportGenerator } from './components/ReportGenerator';
 import { ModelsView } from './components/ModelsView';
-import { Search, Plus, Sun, Moon, Calendar } from 'lucide-react';
+import { Search, Plus, Sun, Moon, Calendar, Download, Upload, CheckCircle, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { LockScreen } from './components/LockScreen';
 import { LockToggle } from './components/LockToggle';
@@ -27,6 +28,7 @@ export default function App() {
   const [selectedStatus, setSelectedStatus] = useState<string>('');
   const [selectedSeverity, setSelectedSeverity] = useState<string>('');
   const [dateRange, setDateRange] = useState<{start: string; end: string}>({ start: '', end: '' });
+  const [importToast, setImportToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   
   const [activeTechniqueId, setActiveTechniqueId] = useState<string | null>(null);
   const [reportTechniqueId, setReportTechniqueId] = useState<string | null>(null);
@@ -80,6 +82,41 @@ export default function App() {
     setTechniques(updated);
     saveTechniques(updated);
     if (activeTechniqueId === id) setActiveTechniqueId(null);
+  };
+
+  const showToast = (type: 'success' | 'error', message: string) => {
+    setImportToast({ type, message });
+    setTimeout(() => setImportToast(null), 3500);
+  };
+
+  const handleImportYaml = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = ''; // reset so same file can be re-imported
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string;
+      try {
+        const { cards, errors } = parseCardsYaml(text);
+        if (cards.length === 0) {
+          showToast('error', errors.length ? errors[0] : 'No valid cards found in file.');
+          return;
+        }
+        // Merge: keep existing cards not in the file, add/overwrite imported ones
+        const importedIds = new Set(cards.map(c => c.id));
+        const merged = [
+          ...cards,
+          ...techniques.filter(t => !importedIds.has(t.id))
+        ];
+        setTechniques(merged);
+        saveTechniques(merged);
+        const warn = errors.length ? ` (${errors.length} skipped)` : '';
+        showToast('success', `Imported ${cards.length} card${cards.length !== 1 ? 's' : ''}${warn}`);
+      } catch (err) {
+        showToast('error', 'Failed to parse YAML file.');
+      }
+    };
+    reader.readAsText(file);
   };
 
   const createNew = () => {
@@ -245,6 +282,35 @@ export default function App() {
               </div>
             )}
             
+            {/* ── YAML backup buttons ── */}
+            <div className="flex items-center gap-1 ml-2">
+              <button
+                id="export-yaml-btn"
+                onClick={() => exportCardsYaml(techniques)}
+                title="Export all cards as YAML backup"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-text-secondary hover:text-accent bg-bg-elevated/40 hover:bg-bg-elevated border border-border-default rounded-md transition-all"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Export</span>
+              </button>
+              <label
+                id="import-yaml-label"
+                htmlFor="import-yaml-input"
+                title="Import cards from YAML backup"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-text-secondary hover:text-accent bg-bg-elevated/40 hover:bg-bg-elevated border border-border-default rounded-md transition-all cursor-pointer"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Import</span>
+              </label>
+              <input
+                id="import-yaml-input"
+                type="file"
+                accept=".yaml,.yml"
+                className="hidden"
+                onChange={handleImportYaml}
+              />
+            </div>
+
             <LockToggle 
               config={lockConfig} 
               onSaveConfig={handleSaveLockConfig} 
@@ -258,6 +324,28 @@ export default function App() {
             >
               {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </button>
+
+            {/* ── Import/Export toast ── */}
+            <AnimatePresence>
+              {importToast && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -8, scale: 0.95 }}
+                  transition={{ duration: 0.2 }}
+                  className={`fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-2.5 rounded-lg border text-sm font-medium shadow-lg backdrop-blur-sm ${
+                    importToast.type === 'success'
+                      ? 'bg-emerald-950/90 border-emerald-500/30 text-emerald-300'
+                      : 'bg-red-950/90 border-red-500/30 text-red-300'
+                  }`}
+                >
+                  {importToast.type === 'success'
+                    ? <CheckCircle className="w-4 h-4 shrink-0" />
+                    : <AlertCircle className="w-4 h-4 shrink-0" />}
+                  {importToast.message}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </header>
 
